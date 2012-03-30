@@ -1,0 +1,9 @@
+*.swp
+*.pyc
+*~
+/venv/
+/.settings/
+.project
+.pydevproject
+local_settings.py
+
