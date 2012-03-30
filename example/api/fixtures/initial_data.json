@@ -1,0 +1,49 @@
+[
+	{
+		"pk": 1,
+		"model": "auth.user",
+		"fields": {
+			"username": "admin",
+			"first_name": "",
+			"last_name": "",
+			"is_active": true,
+			"is_superuser": true,
+			"is_staff": true,
+			"last_login": "2012-03-30T20:38:44.624Z",
+			"groups": [],
+			"user_permissions": [],
+			"password": "pbkdf2_sha256$10000$M9bN6FWw7tE9$DffD9m+WEPuUh9oMIMvJKbFW4qe+b2I607hiA0f4y/k=",
+			"email": "a@a.com",
+			"date_joined": "2012-03-30T20:11:54.468Z"
+		}
+	},
+	{
+		"pk": 2,
+		"model": "auth.user",
+		"fields": {
+			"username": "san-mate",
+			"first_name": "",
+			"last_name": "",
+			"is_active": true,
+			"is_superuser": false,
+			"is_staff": false,
+			"last_login": "2012-03-30T20:39:09.021Z",
+			"groups": [],
+			"user_permissions": [],
+			"password": "pbkdf2_sha256$10000$yhp3yTWzNlxB$jXpbmm/3URKVcgahuuWivaqMY4HIDy52NKfy4MVUCTQ=",
+			"email": "",
+			"date_joined": "2012-03-30T20:39:09.021Z"
+		}
+	},
+	{
+		"pk": 1,
+		"model": "api.entry",
+		"fields": {
+			"body": "This is a test to see the entries for san-mate",
+			"slug": "test_entry",
+			"pub_date": "2012-03-30T20:53:44Z",
+			"user": 2,
+			"title": "Test Entry"
+		}
+	}
+]
