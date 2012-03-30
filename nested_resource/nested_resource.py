@@ -11,37 +11,66 @@ from tastypie.resources import ModelResource, ModelDeclarativeMetaclass, \
 from tastypie.utils import trailing_slash
 
 
-class ExtendedResourceOptions(ResourceOptions):
+class AnyIdAttributeResourceOptions(ResourceOptions):
+    """
+    A configuration class for ``WithNestedModelResource``.
 
+    Adds the ability to use an attribute in the URIs of the resources different
+    than the primary key of the objects.
+
+    Useful for the case in which you want to hide the primary key of the
+    objects in the database. For example, you may want to use an UUID to
+    identify resources in a URL so the user cannot simply increment an integer
+    key and attempt to gain access to another object.
+
+    Any field you with to use as identifier for the objects in the URIs must
+    have unique=True constraint.
+
+    To use this you must declare an ``uri_id_attribute`` in the resource with
+    the name of the attribute that will identify the objects in the URI.
+    If you have a 'uuid' attribute in the model, you then should declare
+
+        uri_id_attribute = 'uuid'
+
+    in the corresponding resource.
+
+    If the ``uri_id_attribute`` field is not found, the object's pkey will be
+    used as default.
+    """
     def __new__(cls, meta=None):
-        new_class = super(ExtendedResourceOptions, cls).__new__(cls, meta)
+        new_class = super(AnyIdAttributeResourceOptions, cls).__new__(cls,
+                                                                      meta)
 
-        url_id_attr = getattr(new_class, 'url_id_attribute', None)
-        if url_id_attr is None:
-            new_class.url_id_attribute = 'pk'
-        else:
-            new_class.url_id_attribute = url_id_attr
-
+        new_class.uri_id_attribute = getattr(new_class,
+                                             'uri_id_attribute',
+                                             'pk')  # Defaults to pkey
         return new_class
 
 
-class ExtendedDeclarativeMetaclass(ModelDeclarativeMetaclass):
+class WithNestedDeclarativeMetaclass(ModelDeclarativeMetaclass):
+    """
+    Same as ``DeclarativeMetaclass`` but uses ``AnyIdAttributeResourceOptions``
+    instead of ``ResourceOptions`` and adds support for multiple nested fields.
+    """
 
     def __new__(cls, name, bases, attrs):
-        new_class = super(ExtendedDeclarativeMetaclass, cls).\
-            __new__(cls, name, bases, attrs)
+        new_class = super(WithNestedDeclarativeMetaclass, cls).__new__(cls,
+                            name, bases, attrs)
 
         opts = getattr(new_class, 'Meta', None)
-        new_class._meta = ExtendedResourceOptions(opts)
+        new_class._meta = AnyIdAttributeResourceOptions(opts)
 
-        nested = getattr(new_class, 'Nested', None)
         nested_fields = {}
+        nested_class = getattr(new_class, 'Nested', None)
+        if nested_class is not None:
+            for field_name in dir(nested_class):
+                if not field_name.startswith('_'):  # No internals
+                    field_object = getattr(nested_class, field_name)
 
-        if nested:
-            for field in dir(nested):
-                if not field.startswith('_'):
-                    nested_fields[field] = getattr(nested, field)
-                    nested_fields[field].contribute_to_class(new_class, field)
+                    nested_fields[field_name] = field_object
+                    if hasattr(field_object, 'contribute_to_class'):
+                        field_object.contribute_to_class(new_class,
+                                                         field_name)
 
         new_class._nested = nested_fields
 
@@ -50,21 +79,77 @@ class ExtendedDeclarativeMetaclass(ModelDeclarativeMetaclass):
 
 class WithNestedModelResource(ModelResource):
 
-    __metaclass__ = ExtendedDeclarativeMetaclass
+    __metaclass__ = WithNestedDeclarativeMetaclass
+
+    def get_id_attribute_regex(self):
+        """
+        Return the regular expression to which the id attribute used in
+        resource URIs should match.
+
+        By default we admit any alphanumeric value, but you may override this
+        function and provide your own.
+        """
+        return '\w[\w-]*'
+
+    def nested_urls(self):
+        """
+        Function collecting nested urls under the detail view.
+        """
+        def nest_url(nested_name):
+            return url(r"^(?P<resource_name>%s)/"
+                         "(?P<%s>%s)/"
+                         "(?P<nested_name>%s)%s$" %
+                       (self._meta.resource_name,
+                        self._meta.uri_id_attribute,
+                        self.get_id_attribute_regex(),
+                        nested_name,
+                        trailing_slash()),
+                       self.wrap_view('dispatch_nested'),
+                       name='api_dispatch_nested')
+
+        return [nest_url(nested_name) for nested_name in self._nested.keys()]
+
+    def detail_actions_urls(self):
+        """
+        Function collecting nested urls under the detail view.
+        """
+        detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
+                        self._meta.resource_name,
+                        self._meta.uri_id_attribute,
+                        self.get_id_attribute_regex()
+        )
+        more_details = patterns('',
+            (detail_url, include(self.detail_actions()))
+        )
+        return more_details
+
+    @property
+    def urls(self):
+        """
+        The endpoints this ``Resource`` responds to.
+
+        Mostly a standard URLconf, this is suitable for either automatic use
+        when registered with an ``Api`` class or for including directly in
+        a URLconf should you choose to.
+        """
+        # Extend with URLs of nested resources
+        urls = self.override_urls() + self.base_urls() + self.nested_urls() +\
+               self.detail_actions_urls()
+        urlpatterns = patterns('',
+            *urls
+        )
+        return urlpatterns
 
     def get_resource_uri(self, bundle_or_obj):
         """
-        Handles generating a resource URI for a single resource.
-
-        Override this function from ModelResource in case we want to use an
-        attribute that is not the pk (but is unique) for the URIs (for example,
-        a GUID).
+        Override the original ``get_resource_uri`` to allow using a different
+        attribute than the pkey for object identification in the resource URIs.
         """
-        kwargs = {
-            'resource_name': self._meta.resource_name,
-        }
+        kwargs = {'resource_name': self._meta.resource_name}
 
-        id_attr = self._meta.url_id_attribute
+        # If uri_id_attribute was not declared it has already been set to 'pk'
+        # by the metaclass.
+        id_attr = self._meta.uri_id_attribute
 
         if isinstance(bundle_or_obj, Bundle):
             kwargs[id_attr] = getattr(bundle_or_obj.obj, id_attr)
@@ -87,50 +172,8 @@ class WithNestedModelResource(ModelResource):
                 name="api_get_schema")
         ]
         """
+        # By default we don't have actions
         return []
-
-    def nested(self, regex, view, name):
-        """
-        Function collecting nested urls under the detail view together
-        """
-        def nest(nested_name, field):
-            return url(r"%s(?P<nested_name>%s)/$" % (regex, nested_name),
-                       view, name=name)
-
-        nested_urls = [nest(*item) for item in self._nested.items()]
-
-        more_details = patterns('',
-            (regex, include(self.detail_actions()))
-        )
-        return nested_urls + more_details
-
-    def base_urls(self):
-        """
-        The standard URLs this ``Resource`` should respond to.
-        """
-        # Due to the way Django parses URLs, ``get_multiple``
-        # won't work without a trailing slash.
-        urls = [
-            url(r"^%s$" % trailing_slash(),
-                self.wrap_view('dispatch_list'),
-                name="api_dispatch_list"),
-            url(r"^/schema%s$" % trailing_slash(),
-                self.wrap_view('get_schema'),
-                name="api_get_schema"),
-            url(r"^/set/(?P<pk_list>\w[\w/;-]*)/$",
-                self.wrap_view('get_multiple'), name="api_get_multiple"),
-            url(r"^/(?P<%s>\w[\w-]*)%s$" % (self._meta.url_id_attribute,
-                                           trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail")
-        ]
-        # Add urls to the nested resources
-        urls.extend(
-            self.nested(r"^/(?P<%s>\w[\w-]*)/" % self._meta.url_id_attribute,
-                        self.wrap_view('dispatch_nested'),
-                        "api_dispatch_nested")
-        )
-
-        return urls
 
     def check_parent_authorization(self, request, parent_object):
         """
@@ -290,23 +333,6 @@ class WithNestedModelResource(ModelResource):
 
         return object_list
 
-    @property
-    def urls(self):
-        """
-        The endpoints this ``Resource`` responds to.
-
-        Mostly a standard URLconf, this is suitable for either automatic use
-        when registered with an ``Api`` class or for including directly in
-        a URLconf should you choose to.
-        """
-        urls = self.override_urls() + self.base_urls()
-        urls = patterns('', *urls)
-        urlpatterns = patterns('',
-            (r"^(?P<resource_name>%s)" % self._meta.resource_name,
-                include(urls))
-        )
-        return urlpatterns
-
     def dispatch_nested(self, request, **kwargs):
         """
         Dispatch a request to the nested resource.
@@ -328,7 +354,7 @@ class WithNestedModelResource(ModelResource):
         except MultipleObjectsReturned:
             return http.HttpMultipleChoices("More than one resource is found.")
 
-        kwargs.pop(self._meta.url_id_attribute)
+        kwargs.pop(self._meta.uri_id_attribute)
 
         manager = None
         if isinstance(nested_field.attribute, basestring):
