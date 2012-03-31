@@ -82,7 +82,7 @@ class WithNestedModelResource(ModelResource):
 
     __metaclass__ = WithNestedDeclarativeMetaclass
 
-    def get_id_attribute_regex(self):
+    def get_url_id_attribute_regex(self):
         """
         Return the regular expression to which the id attribute used in
         resource URLs should match.
@@ -95,6 +95,9 @@ class WithNestedModelResource(ModelResource):
     def base_urls(self):
         """
         The standard URLs this ``Resource`` should respond to.
+
+        Same as the original ``base_urls`` but supports using the custom
+        url_id_attribute instead of the pk of the objects.
         """
         # Due to the way Django parses URLs, ``get_multiple``
         # won't work without a trailing slash.
@@ -110,13 +113,13 @@ class WithNestedModelResource(ModelResource):
             url(r"^(?P<resource_name>%s)/set/(?P<%s_list>(%s;?)*)/$" %
                     (self._meta.resource_name,
                      self._meta.url_id_attribute,
-                     self.get_id_attribute_regex()),
+                     self.get_url_id_attribute_regex()),
                     self.wrap_view('get_multiple'),
                     name="api_get_multiple"),
             url(r"^(?P<resource_name>%s)/(?P<%s>%s)%s$" %
                     (self._meta.resource_name,
                      self._meta.url_id_attribute,
-                     self.get_id_attribute_regex(),
+                     self.get_url_id_attribute_regex(),
                      trailing_slash()),
                      self.wrap_view('dispatch_detail'),
                      name="api_dispatch_detail"),
@@ -131,7 +134,7 @@ class WithNestedModelResource(ModelResource):
                         r"(?P<nested_name>%s)%s$" %
                        (self._meta.resource_name,
                         self._meta.url_id_attribute,
-                        self.get_id_attribute_regex(),
+                        self.get_url_id_attribute_regex(),
                         nested_name,
                         trailing_slash()),
                        self.wrap_view('dispatch_nested'),
@@ -159,7 +162,7 @@ class WithNestedModelResource(ModelResource):
         detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
                         self._meta.resource_name,
                         self._meta.url_id_attribute,
-                        self.get_id_attribute_regex()
+                        self.get_url_id_attribute_regex()
         )
         more_details = patterns('',
             (detail_url, include(self.detail_actions()))
@@ -181,7 +184,7 @@ class WithNestedModelResource(ModelResource):
 
     def get_multiple(self, request, **kwargs):
         """
-        Same as the original ``get_multiple`` but supports using
+        Same as the original ``get_multiple`` but supports using the custom
         url_id_attribute instead of the pk of the objects.
         """
         self.method_check(request, allowed=['get'])
@@ -247,7 +250,7 @@ class WithNestedModelResource(ModelResource):
 
     def parent_obj_get(self, request=None, **kwargs):
         """
-        Same as ``obj_get`` but for the parent resource.
+        Same as the original ``obj_get`` but for the parent resource.
 
         Calls another function instead of apply_authorization_limits.
         """
@@ -321,7 +324,7 @@ class WithNestedModelResource(ModelResource):
 
     def obj_get(self, request=None, **kwargs):
         """
-        Same as ``obj_get`` but does custom check of permissions.
+        Same as the original ``obj_get`` but does custom check of permissions.
         """
         try:
             nested_name = kwargs.pop('nested_name', None)
