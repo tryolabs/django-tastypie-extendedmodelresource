@@ -61,7 +61,9 @@ class WithNestedDeclarativeMetaclass(ModelDeclarativeMetaclass):
         opts = getattr(new_class, 'Meta', None)
         new_class._meta = AnyIdAttributeResourceOptions(opts)
 
+        # Will map nested fields names to the actual fields
         nested_fields = {}
+
         nested_class = getattr(new_class, 'Nested', None)
         if nested_class is not None:
             for field_name in dir(nested_class):
@@ -94,8 +96,6 @@ class WithNestedModelResource(ModelResource):
 
     def base_urls(self):
         """
-        The standard URLs this ``Resource`` should respond to.
-
         Same as the original ``base_urls`` but supports using the custom
         url_id_attribute instead of the pk of the objects.
         """
@@ -127,9 +127,11 @@ class WithNestedModelResource(ModelResource):
 
     def nested_urls(self):
         """
-        Function collecting nested urls under the detail view.
+        Return the list of all urls nested under the detail view of a resource.
+
+        Each resource listed as Nested will generate one url.
         """
-        def nest_url(nested_name):
+        def get_nested_url(nested_name):
             return url(r"^(?P<resource_name>%s)/(?P<%s>%s)/"
                         r"(?P<nested_name>%s)%s$" %
                        (self._meta.resource_name,
@@ -140,52 +142,58 @@ class WithNestedModelResource(ModelResource):
                        self.wrap_view('dispatch_nested'),
                        name='api_dispatch_nested')
 
-        return [nest_url(nested_name) for nested_name in self._nested.keys()]
+        return [get_nested_url(nested_name)
+                for nested_name in self._nested.keys()]
 
     def detail_actions(self):
         """
-        Actions on the detail view.
-        List of urls that can be append to the detail url
+        Return urls of custom actions to be performed on the detail view of a
+        resource. These urls will be appended to the url of the detail view.
+        This allows a finer control by providing a custom view for each of
+        these actions in the resource.
 
-        Example:
+        A resource should override this method and provide its own list of
+        detail actions urls, if needed.
+
+        For example:
+
         return [
             url(r"^show_schema/$", self.wrap_view('get_schema'),
                 name="api_get_schema")
         ]
+
+        will add show schema capabilities to a detail resource URI (ie.
+        /api/user/3/show_schema/ will work just like /api/user/schema/).
         """
         return []
 
     def detail_actions_urlpatterns(self):
         """
-        Function collecting nested urls under the detail view.
+        Return the url patterns corresponding to the detail actions available
+        on this resource.
         """
         detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
                         self._meta.resource_name,
                         self._meta.url_id_attribute,
                         self.get_url_id_attribute_regex()
         )
-        more_details = patterns('',
-            (detail_url, include(self.detail_actions()))
-        )
-        return more_details
+        return patterns('', (detail_url, include(self.detail_actions())))
 
     @property
     def urls(self):
         """
         The endpoints this ``Resource`` responds to.
 
-        Mostly a standard URLconf, this is suitable for either automatic use
-        when registered with an ``Api`` class or for including directly in
-        a URLconf should you choose to.
+        Same as the original ``urls`` attribute but supports nested urls as
+        well as detail actions urls.
         """
-        # Extend with URLs of nested resources
         urls = self.override_urls() + self.base_urls() + self.nested_urls()
         return patterns('', *urls) + self.detail_actions_urlpatterns()
 
     def get_multiple(self, request, **kwargs):
         """
         Same as the original ``get_multiple`` but supports using the custom
-        url_id_attribute instead of the pk of the objects.
+        ``url_id_attribute`` instead of the pk of the objects.
         """
         self.method_check(request, allowed=['get'])
         self.is_authenticated(request)
@@ -197,16 +205,16 @@ class WithNestedModelResource(ModelResource):
         objects = []
         not_found = []
 
-        for att in obj_attributes:
+        for att_value in obj_attributes:
             try:
                 # Get the object by our attribute
                 obj = self.obj_get(request,
-                                   **{self._meta.url_id_attribute: att})
+                                   **{self._meta.url_id_attribute: att_value})
                 bundle = self.build_bundle(obj=obj, request=request)
                 bundle = self.full_dehydrate(bundle)
                 objects.append(bundle)
             except ObjectDoesNotExist:
-                not_found.append(att)
+                not_found.append(att_value)
 
         object_list = {'objects': objects}
 
@@ -218,19 +226,19 @@ class WithNestedModelResource(ModelResource):
 
     def get_resource_uri(self, bundle_or_obj):
         """
-        Override the original ``get_resource_uri`` to allow using a different
-        attribute than the pkey for object identification in the resource URIs.
+        Same as the original ``get_resource_uri`` but supports using the custom
+        ``url_id_attribute`` instead of the pk of the objects.
         """
         kwargs = {'resource_name': self._meta.resource_name}
 
         # If url_id_attribute was not declared it has already been set to 'pk'
         # by the metaclass.
-        id_attr = self._meta.url_id_attribute
+        id_attr_name = self._meta.url_id_attribute
 
         if isinstance(bundle_or_obj, Bundle):
-            kwargs[id_attr] = getattr(bundle_or_obj.obj, id_attr)
+            kwargs[id_attr_name] = getattr(bundle_or_obj.obj, id_attr_name)
         else:
-            kwargs[id_attr] = getattr(bundle_or_obj, id_attr)
+            kwargs[id_attr_name] = getattr(bundle_or_obj, id_attr_name)
 
         if self._meta.api_name is not None:
             kwargs['api_name'] = self._meta.api_name
