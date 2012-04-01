@@ -245,10 +245,13 @@ class WithNestedModelResource(ModelResource):
 
         return self._build_reverse_url("api_dispatch_detail", kwargs=kwargs)
 
-    def check_parent_authorization(self, request, parent_object):
+    def is_authorized_over_parent(self, request, parent_object):
         """
-        Allows the ``Authorization`` class to check if the request has
-        permissions over the parent.
+        Allows the ``Authorization`` class to check if a request to a nested
+        resource has permissions over the parent.
+
+        Will call the ``is_authorized_parent`` function of the
+        ``Authorization`` class.
         """
         if hasattr(self._meta.authorization, 'is_authorized_parent'):
             return self._meta.authorization.is_authorized_parent(request,
@@ -258,15 +261,17 @@ class WithNestedModelResource(ModelResource):
 
     def parent_obj_get(self, request=None, **kwargs):
         """
-        Same as the original ``obj_get`` but for the parent resource.
+        Same as the original ``obj_get`` but called when a nested resource
+        wants to get its parent.
 
-        Calls another function instead of apply_authorization_limits.
+        Will check authorization to see if the request is allowed to act on
+        the parent resource.
         """
         try:
             parent_object = self.get_object_list(request).get(**kwargs)
 
             # If I am not authorized for the parent
-            if not self.check_parent_authorization(request, parent_object):
+            if not self.is_authorized_over_parent(request, parent_object):
                 stringified_kwargs = ', '.join(["%s=%s" % (k, v)
                                                 for k, v in kwargs.items()])
                 raise self._meta.object_class.DoesNotExist("Couldn't find an "
@@ -277,12 +282,13 @@ class WithNestedModelResource(ModelResource):
         except ObjectDoesNotExist:
             return http.HttpNotFound()
         except MultipleObjectsReturned:
-            return http.HttpMultipleChoices("More than one resource is found "
-                                            "at this URI.")
+            return http.HttpMultipleChoices("More than one parent resource is "
+                                            "found at this URI.")
 
     def parent_cached_obj_get(self, request=None, **kwargs):
         """
-        Same as ``cached_obj_get`` but for the parent resource.
+        Same as the original ``cached_obj_get`` but called when a nested
+        resource wants to get its parent.
         """
         cache_key = self.generate_cache_key('detail', **kwargs)
         bundle = self._meta.cache.get(cache_key)
@@ -294,6 +300,11 @@ class WithNestedModelResource(ModelResource):
         return bundle
 
     def get_via_uri_resolver(self, uri):
+        """
+        Do the work of the original ``get_via_uri`` except calling ``obj_get``.
+
+        Use this as a helper function.
+        """
         prefix = get_script_prefix()
         chomped_uri = uri
 
@@ -311,9 +322,12 @@ class WithNestedModelResource(ModelResource):
     def get_nested_via_uri(self, uri, parent_resource,
                            parent_object, nested_name, request=None):
         """
-        Same as ``get_via_uri`` but custom permission check for nested
-        resources.
+        Obtain a nested resource from an uri, a parent resource and a parent
+        object.
+
+        Calls ``obj_get`` which handles the authorization checks.
         """
+        # TODO: improve this to get parent resource & object from uri too?
         kwargs = self.get_via_uri_resolver(uri)
         return self.obj_get(nested_name=nested_name,
                             parent_resource=parent_resource,
@@ -323,8 +337,13 @@ class WithNestedModelResource(ModelResource):
 
     def get_via_uri_no_auth_check(self, uri, request=None):
         """
-        Same as ``get_via_uri`` but does NOT check any permissions.
-        Those checks must be performed manually.
+        Obtain a nested resource from an uri, a parent resource and a
+        parent object.
+
+        Does *not* do authorization checks, those must be performed manually.
+        This function is useful be called from custom views over a resource
+        which need access to objects and can do the check of permissions
+        theirselves.
         """
         kwargs = self.get_via_uri_resolver(uri)
         return self.obj_get_no_auth_check(request=request,
@@ -332,19 +351,21 @@ class WithNestedModelResource(ModelResource):
 
     def obj_get(self, request=None, **kwargs):
         """
-        Same as the original ``obj_get`` but does custom check of permissions.
+        Same as the original ``obj_get`` but knows when it is being called to
+        get an object from a nested resource uri.
+
+        Performs authorization checks in every case.
         """
         try:
             nested_name = kwargs.pop('nested_name', None)
             parent_resource = kwargs.pop('parent_resource', None)
             parent_object = kwargs.pop('parent_object', None)
 
-            #from pdb import set_trace
-            #set_trace()
-
             base_object_list = self.get_object_list(request).filter(**kwargs)
 
             if nested_name is not None:
+                # TODO: throw exception if parent_resource or parent_object are
+                #       None
                 object_list = self.apply_nested_authorization_limits(request,
                                     nested_name, parent_resource,
                                     parent_object, base_object_list)
@@ -371,8 +392,13 @@ class WithNestedModelResource(ModelResource):
 
     def obj_get_no_auth_check(self, request=None, **kwargs):
         """
-        Same as ``obj_get`` but does NOT check for permissions.
+        Same as the original ``obj_get`` knows when it is being called to get
+        a nested resource.
+
+        Does *not* do authorization checks.
         """
+        # TODO: merge this and original obj_get and use another argument in
+        #       kwargs to know if we should check for auth?
         try:
             object_list = self.get_object_list(request).filter(**kwargs)
             stringified_kwargs = ', '.join(["%s=%s" % (k, v)
@@ -425,10 +451,12 @@ class WithNestedModelResource(ModelResource):
         except ObjectDoesNotExist:
             return http.HttpNotFound()
         except MultipleObjectsReturned:
-            return http.HttpMultipleChoices("More than one resource is found.")
+            return http.HttpMultipleChoices("More than one parent resource is "
+                                            "found at this URI.")
 
         kwargs.pop(self._meta.url_id_attribute)
 
+        # TODO: comment further to make sense of this block
         manager = None
         if isinstance(nested_field.attribute, basestring):
             name = nested_field.attribute
@@ -444,8 +472,9 @@ class WithNestedModelResource(ModelResource):
                 )
             )
 
-        # The resource needs to get the api_name from their father because
-        # the nested resource maybe isn't registered
+        # The nested resource needs to get the api_name from its parent because
+        # it is possible that the resource being used as nested is not
+        # registered in the API (ie. it can only be used as nested)
         nested_resource = nested_field.to_class()
         nested_resource._meta.api_name = self._meta.api_name
 
