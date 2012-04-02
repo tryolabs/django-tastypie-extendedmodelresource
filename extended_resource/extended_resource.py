@@ -11,9 +11,9 @@ from tastypie.resources import ModelResource, ModelDeclarativeMetaclass, \
 from tastypie.utils import trailing_slash
 
 
-class AnyIdAttributeResourceOptions(ResourceOptions):
+class ExtendedResourceOptions(ResourceOptions):
     """
-    A configuration class for ``WithNestedModelResource``.
+    A configuration class for ``ExtendedModelResource``.
 
     Adds the ability to use an attribute in the URLs of the resources different
     than the primary key of the objects.
@@ -38,8 +38,7 @@ class AnyIdAttributeResourceOptions(ResourceOptions):
     used as default.
     """
     def __new__(cls, meta=None):
-        new_class = super(AnyIdAttributeResourceOptions, cls).__new__(cls,
-                                                                      meta)
+        new_class = super(ExtendedResourceOptions, cls).__new__(cls, meta)
 
         new_class.url_id_attribute = getattr(new_class,
                                              'url_id_attribute',
@@ -47,7 +46,7 @@ class AnyIdAttributeResourceOptions(ResourceOptions):
         return new_class
 
 
-class WithNestedDeclarativeMetaclass(ModelDeclarativeMetaclass):
+class ExtendedDeclarativeMetaclass(ModelDeclarativeMetaclass):
     """
     Same as ``DeclarativeMetaclass`` but uses ``AnyIdAttributeResourceOptions``
     instead of ``ResourceOptions`` and adds support for multiple nested fields
@@ -55,11 +54,11 @@ class WithNestedDeclarativeMetaclass(ModelDeclarativeMetaclass):
     """
 
     def __new__(cls, name, bases, attrs):
-        new_class = super(WithNestedDeclarativeMetaclass, cls).__new__(cls,
+        new_class = super(ExtendedDeclarativeMetaclass, cls).__new__(cls,
                             name, bases, attrs)
 
         opts = getattr(new_class, 'Meta', None)
-        new_class._meta = AnyIdAttributeResourceOptions(opts)
+        new_class._meta = ExtendedResourceOptions(opts)
 
         # Will map nested fields names to the actual fields
         nested_fields = {}
@@ -80,9 +79,9 @@ class WithNestedDeclarativeMetaclass(ModelDeclarativeMetaclass):
         return new_class
 
 
-class WithNestedModelResource(ModelResource):
+class ExtendedModelResource(ModelResource):
 
-    __metaclass__ = WithNestedDeclarativeMetaclass
+    __metaclass__ = ExtendedDeclarativeMetaclass
 
     def get_url_id_attribute_regex(self):
         """

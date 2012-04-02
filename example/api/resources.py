@@ -4,10 +4,10 @@ from tastypie import fields
 
 from models import Entry
 
-from nested_resource import WithNestedModelResource
+from extended_resource import ExtendedModelResource
 
 
-class UserResource(WithNestedModelResource):
+class UserResource(ExtendedModelResource):
     class Meta:
         queryset = User.objects.all()
         resource_name = 'user'
@@ -16,7 +16,7 @@ class UserResource(WithNestedModelResource):
         entries = fields.ToManyField('api.resources.EntryResource', 'entries')
 
 
-class EntryResource(WithNestedModelResource):
+class EntryResource(ExtendedModelResource):
     user = fields.ForeignKey(UserResource, 'user')
 
     class Meta:
