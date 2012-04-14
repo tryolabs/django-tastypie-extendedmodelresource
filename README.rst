@@ -95,7 +95,7 @@ TODO
 Caveats
 -------
 * ``ExtendedModelResource`` only supports one level nesting.
-* Resources used as nested can also be registered in an **Api** instance, but need not to. That is, there can be resourced used **only** as nested and not exposed otherwise in the urls.
+* Resources used as nested can also be registered in an **Api** instance, but need not to. That is, there can be resources used **only** as nested and not exposed otherwise in the urls.
 
 
 Changing object's identifier attribute in urls
