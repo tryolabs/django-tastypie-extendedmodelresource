@@ -22,6 +22,12 @@ Optional
 
 *Nested* resources
 ==================
+
+Here we explain what we mean by *nested resources* and what a simple use case would be.
+
+Rationale
+---------
+
 Imagine you have a simple application which has users, each of which can write any number of entries. Every entry is associated to a user. For example ::
 
     from django.contrib.auth.models import User
@@ -51,11 +57,11 @@ The 'standard' TastyPie models for this would be ::
 
 This gives you full CRUD ability over users and entries, with uris such as ``/api/user/`` and ``/api/entry/``.
 
-Now imagine you want to be able to easily list all the entries of a given user, with a uri such as ``/api/user/<pk>/entries``. Additionally, you would like to be able to POST to this uri and create an entry associated to this user. This is why nested resources are for.
+Now imagine you want to be able to easily list all the entries authored by a given user, with a uri such as ``/api/user/<pk>/entries``. Additionally, you would like to be able to POST to this uri and create an entry automatically associated to this user. This is why nested resources are for.
 
-If a resource such as the ``EntryResource`` is to be accessed as ``/api/user/<pk>/<something>`` where ``<something>`` is defined as you wish (for example ``entries``), then we say the ``EntryResource`` is being used as **nested** to the ``UserResource``.
+If a resource such as the ``EntryResource`` is to be accessed as ``/api/user/<pk>/<something>`` where ``<something>`` is custom-defined (for example ``entries``), then we say the ``EntryResource`` is being used as **nested** of the ``UserResource``. We also say that ``UserResource`` is the **parent** of ``EntryResource``.
 
-With the standard TastyPie this would force you to write a function overriding the urls of the ``UserResource``. With ``ExtendedModelResource`` it is as easy as ::
+While the standard TastyPie would force you to write a function overriding the urls of the ``UserResource``, using ``ExtendedModelResource`` it is as easy as ::
 
     from django.contrib.auth.models import User
     from tastypie import fields
@@ -81,9 +87,15 @@ With the standard TastyPie this would force you to write a function overriding t
 And that's it!
 
 
-Authorization
--------------
+How authorization is handled
+----------------------------
 TODO
+
+
+Caveats
+-------
+* ``ExtendedModelResource`` only supports one level nesting.
+* Resources used as nested can also be registered in an **Api** instance, but need not to. That is, there can be resourced used **only** as nested and not exposed otherwise in the urls.
 
 
 Changing object's identifier attribute in urls
