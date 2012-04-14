@@ -82,7 +82,7 @@ And that's it!
 
 
 Authorization
-~~~~~~~~~~~~~
+-------------
 TODO
 
 
