@@ -89,8 +89,47 @@ And that's it!
 
 How authorization is handled
 ----------------------------
-TODO
+If a resource does not have a nested resource, the authorization is handled the same way as in the standard TastyPie. You define an ``Authorization`` class and associate it to the resource. This class may implement the ``is_authorized`` and ``apply_limits`` methods.
 
+For an ``ExtendedModelResource`` with nesteds, all the authorization when using the nested as such is handled from the authorization class **of the parent resource**. For each resource used as nested, the ``Authorization`` class of the parent can implement two methods:
+
+* ``is_authorized_nested_<attribute>``
+* ``apply_limits_nested_<attribute>``
+
+where ``<attribute>`` is the name of the attribute parameter in the ``ApiField`` that declares the resource as nested. These functions work identically to the original ones, except that they also receive a ``parent_object`` parameter which will contain the parent object.
+
+For our users and entries example, an ``Authorization`` can be something like::
+
+    from tastypie.authorization import Authorization
+    
+    
+    class UserResourceAuthorization(Authorization):
+        """
+        Our Authorization class for UserResource and its nested.
+        """
+    
+        def is_authorized(self, request, object=None):
+            # Only 'newton' is authorized to view the users
+            if 'newton' in request.user.username:
+              return True
+    
+            return False
+    
+        def apply_limits(self, request, object_list):
+            return object_list.all()
+    
+        def is_authorized_nested_entries(self, request,
+                                         parent_object, object=None):
+            # Is request.user authorized to access the EntryResource as
+            # nested?
+            return True
+    
+        def apply_limits_nested_entries(self, request, parent_object,
+                                       object_list):
+            # Advanced filtering.
+            # Note that object_list already only contains the objects that
+            # are associated to parent_object.
+            return object_list.all()
 
 Caveats
 -------
