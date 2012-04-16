@@ -100,8 +100,40 @@ Caveats
 
 Changing object's identifier attribute in urls
 ==============================================
-TODO
 
+With TastyPie's ``ModelResource`` you can override a method to change URL identifier (see `TastyPie Cookbook <http://django-tastypie.readthedocs.org/en/latest/cookbook.html#using-non-pk-data-for-your-urls>`_) ::
+
+    class UserResource(ModelResource):
+        class Meta:
+            queryset = User.objects.all()
+
+        def override_urls(self):
+            return [
+                url(r"^(?P<resource_name>%s)/(?P<username>[\w\d_.-]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+
+This adds a new URL using ``username`` and ignores the old URL using ``PK`` ::
+
+    ^api/ ^(?P<resource_name>user)/(?P<username>[\w\d_.-]+)/$ [name='api_dispatch_detail']
+    ^api/ ^(?P<resource_name>user)/$ [name='api_dispatch_list']
+    ^api/ ^(?P<resource_name>user)/schema/$ [name='api_get_schema']
+    ^api/ ^(?P<resource_name>user)/set/(?P<pk_list>\w[\w/;-]*)/$ [name='api_get_multiple']
+    ^api/ ^(?P<resource_name>user)/(?P<pk>\w[\w/-]*)/$ [name='api_dispatch_detail']
+
+But the old URL is still there, and this can be a bit confusing when you have an error with the URL's.
+Using ``ExtendedModelResource`` it is as easy as adding a new entry in Meta class ::
+
+    class UserResource(ModelResource):
+        class Meta:
+            queryset = User.objects.all()
+            url_id_attribute = 'username'
+
+And you will get this list of urls ::
+
+    ^api/ ^(?P<resource_name>user)/$ [name='api_dispatch_list']
+    ^api/ ^(?P<resource_name>user)/schema/$ [name='api_get_schema']
+    ^api/ ^(?P<resource_name>user)/set/(?P<username_list>(\w[\w-]*;?)*)/$ [name='api_get_multiple']
+    ^api/ ^(?P<resource_name>user)/(?P<username>\w[\w-]*)/$ [name='api_dispatch_detail']
 
 More information
 ================

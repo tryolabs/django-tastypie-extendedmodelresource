@@ -11,6 +11,7 @@ class UserResource(ExtendedModelResource):
     class Meta:
         queryset = User.objects.all()
         resource_name = 'user'
+        url_id_attribute = 'username'
 
     class Nested:
         entries = fields.ToManyField('api.resources.EntryResource', 'entries')

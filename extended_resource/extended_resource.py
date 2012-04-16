@@ -171,12 +171,15 @@ class ExtendedModelResource(ModelResource):
         Return the url patterns corresponding to the detail actions available
         on this resource.
         """
-        detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
-                        self._meta.resource_name,
-                        self._meta.url_id_attribute,
-                        self.get_url_id_attribute_regex()
-        )
-        return patterns('', (detail_url, include(self.detail_actions())))
+        if self.detail_actions():
+            detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
+                            self._meta.resource_name,
+                            self._meta.url_id_attribute,
+                            self.get_url_id_attribute_regex()
+            )
+            return patterns('', (detail_url, include(self.detail_actions())))
+
+        return []
 
     @property
     def urls(self):
