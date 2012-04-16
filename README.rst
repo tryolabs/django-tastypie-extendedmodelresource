@@ -135,6 +135,11 @@ And you will get this list of urls ::
     ^api/ ^(?P<resource_name>user)/set/(?P<username_list>(\w[\w-]*;?)*)/$ [name='api_get_multiple']
     ^api/ ^(?P<resource_name>user)/(?P<username>\w[\w-]*)/$ [name='api_dispatch_detail']
 
+And also if you want to change the regular expresion for the ID in the url you can override the method ``get_url_id_attribute_regex`` in this way ::
+
+    def get_url_id_attribute_regex(self):
+        return r'[aA-zZ][\w-]*'
+
 More information
 ================
 
