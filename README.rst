@@ -61,7 +61,7 @@ Now imagine you want to be able to easily list all the entries authored by a giv
 
 If a resource such as the ``EntryResource`` is to be accessed as ``/api/user/<pk>/<something>`` where ``<something>`` is custom-defined (for example ``entries``), then we say the ``EntryResource`` is being used as **nested** of the ``UserResource``. We also say that ``UserResource`` is the **parent** of ``EntryResource``.
 
-While the standard TastyPie would force you to write a function overriding the urls of the ``UserResource``, using ``ExtendedModelResource`` it is as easy as ::
+The standard TastyPie's ``ModelResource`` would force you to write a function overriding the urls of the ``UserResource`` and adding a method to handle the entry resource (see `TastyPie Cookbook <http://django-tastypie.readthedocs.org/en/latest/cookbook.html#nested-resources>`_). Using ``ExtendedModelResource`` it is as easy as ::
 
     from django.contrib.auth.models import User
     from tastypie import fields
