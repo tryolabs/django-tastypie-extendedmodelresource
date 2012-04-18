@@ -1,16 +1,13 @@
-from django.conf.urls.defaults import *
+from django.conf.urls import url
+from django.conf.urls.defaults import patterns, include
 from django.contrib import admin
 
-from api.resources import EntryResource, UserResource
+from api.urls import v1_api
 
-
-entry_resource = EntryResource()
-user_resource = UserResource()
 
 admin.autodiscover()
 
 urlpatterns = patterns('',
-    (r'^api/', include(entry_resource.urls)),
-    (r'^api/', include(user_resource.urls)),
     url(r'^admin/', include(admin.site.urls)),
+    (r"^api/", include(v1_api.urls)),
 )
