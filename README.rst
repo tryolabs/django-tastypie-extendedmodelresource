@@ -31,7 +31,7 @@ Or just do
 
     pip install django-tastypie-extendedmodelresource
 
-to get the latest version from `pypi <http://pypi.python.org/pypi/django-tastypie-extendedmodelresource>`_).
+to get the latest version from `pypi <http://pypi.python.org/pypi/django-tastypie-extendedmodelresource>`_.
 
 
 *Nested* resources
