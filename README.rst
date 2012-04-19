@@ -20,6 +20,20 @@ Optional
 * Django 1.4 for the sample project.
 
 
+Installation
+============
+
+Clone repository and do:
+
+    python setup.py install
+
+Or just do
+
+    pip install django-tastypie-extendedmodelresource
+
+to get the latest version from `pypi <http://pypi.python.org/pypi/django-tastypie-extendedmodelresource>`_).
+
+
 *Nested* resources
 ==================
 
@@ -183,8 +197,8 @@ If you need to change the regular expression used for your identifier attribute 
 More information
 ================
 
-:Date: 04-14-2012
-:Version: 1.0
+:Date: 04-19-2012
+:Version: 0.1
 :Authors:
   - Alan Descoins - Tryolabs <alan@tryolabs.com>
   - Martín Santos - Tryolabs <santos@tryolabs.com>
