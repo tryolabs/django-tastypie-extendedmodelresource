@@ -1,0 +1,2 @@
+from .extendedmodelresource import ExtendedModelResource
+

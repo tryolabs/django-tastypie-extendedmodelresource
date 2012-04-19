@@ -4,7 +4,7 @@ from tastypie import fields
 
 from models import Entry
 
-from extended_resource import ExtendedModelResource
+from extendedmodelresource import ExtendedModelResource
 
 
 class UserResource(ExtendedModelResource):

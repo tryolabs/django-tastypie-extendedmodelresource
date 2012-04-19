@@ -1,1 +1,0 @@
-from extended_resource import ExtendedModelResource
