@@ -66,7 +66,7 @@ The standard TastyPie's ``ModelResource`` would force you to write a function ov
     from django.contrib.auth.models import User
     from tastypie import fields
 
-    from extended_resource import ExtendedModelResource
+    from extendedmodelresource import ExtendedModelResource
     from myapp.models import Entry
 
 
