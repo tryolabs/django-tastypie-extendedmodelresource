@@ -177,7 +177,7 @@ But the old URL is still there, and this can be a bit confusing when you have an
 
 Using ``ExtendedModelResource`` it is as easy as adding a new entry in the ``Meta`` class ::
 
-    class UserResource(ModelResource):
+    class UserResource(ExtendedModelResource):
         class Meta:
             queryset = User.objects.all()
             url_id_attribute = 'username'
