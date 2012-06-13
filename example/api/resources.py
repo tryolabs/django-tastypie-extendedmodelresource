@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 
 from tastypie import fields
 
-from models import Entry
+from models import Entry, EntryInfo
 
 from extendedmodelresource import ExtendedModelResource
 
@@ -22,6 +22,16 @@ class EntryResource(ExtendedModelResource):
     class Meta:
         queryset = Entry.objects.all()
         resource_name = 'entry'
+
+    class Nested:
+        entryinfo = fields.OneToManyField('api.resources.EntryInfoResource',
+                                         'entryinfo')
+
+
+class EntryInfoResource(ExtendedModelResource):
+    class Meta:
+        queryset = EntryInfo.objects.all()
+        resource_name = 'EntryInfo'
 
 
 class UserByNameResource(ExtendedModelResource):

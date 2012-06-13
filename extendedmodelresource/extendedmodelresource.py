@@ -460,6 +460,7 @@ class ExtendedModelResource(ModelResource):
 
         # TODO: comment further to make sense of this block
         manager = None
+
         if isinstance(nested_field.attribute, basestring):
             name = nested_field.attribute
             manager = getattr(obj, name, None)
@@ -480,8 +481,12 @@ class ExtendedModelResource(ModelResource):
         nested_resource = nested_field.to_class()
         nested_resource._meta.api_name = self._meta.api_name
 
+        dispatch_type = 'list'
+        if manager is None or not hasattr(manager, 'all'):
+            dispatch_type = 'detail'
+
         return nested_resource.dispatch(
-            'list',
+            dispatch_type,
             request,
             nested_name=nested_name,
             parent_resource=self,
@@ -631,3 +636,37 @@ class ExtendedModelResource(ModelResource):
                                                              to_be_serialized)
         return self.create_response(request, to_be_serialized)
 
+    def get_detail(self, request, **kwargs):
+        """
+        Returns a single serialized resource.
+
+        Calls ``cached_obj_get/obj_get`` to provide the data, then handles that
+        result set and serializes it.
+
+        Should return a HttpResponse (200 OK).
+        """
+        try:
+            # If call was made through Nested, remove parameters
+            if 'related_manager' in kwargs:
+                kwargs.pop('related_manager', None)
+                kwargs.pop('parent_resource', None)
+                nested_name = kwargs.pop('nested_name', None)
+                parent_object = kwargs.pop('parent_object', None)
+                obj = getattr(parent_object, nested_name)
+                if obj is None:
+                    return http.HttpNotFound()
+            else:
+                obj = self.cached_obj_get(request=request,
+                                    **self.remove_api_resource_names(kwargs))
+        except AttributeError:
+            return http.HttpNotFound()
+        except ObjectDoesNotExist:
+            return http.HttpNotFound()
+        except MultipleObjectsReturned:
+            return http.HttpMultipleChoices("More than one resource is found "
+                                            "at this URI.")
+
+        bundle = self.build_bundle(obj=obj, request=request)
+        bundle = self.full_dehydrate(bundle)
+        bundle = self.alter_detail_data_to_serialize(request, bundle)
+        return self.create_response(request, bundle)

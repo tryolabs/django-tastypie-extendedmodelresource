@@ -10,6 +10,8 @@ class Entry(models.Model):
     title = models.CharField(max_length=200)
     slug = models.SlugField()
     body = models.TextField()
+    entryinfo = models.ForeignKey('EntryInfo', null=True, blank=True,
+                                  related_name='entry')
 
     def __unicode__(self):
         return self.title
@@ -20,3 +22,7 @@ class Entry(models.Model):
             self.slug = slugify(self.title)[:50]
 
         return super(Entry, self).save(*args, **kwargs)
+
+
+class EntryInfo(models.Model):
+    somefield = models.CharField(max_length=200)
