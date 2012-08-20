@@ -38,7 +38,7 @@ class UserByNameResource(ExtendedModelResource):
     class Meta:
         queryset = User.objects.all()
         resource_name = 'userbyname'
-        url_id_attribute = 'username'
+        detail_uri_name = 'username'
 
     def get_url_id_attribute_regex(self):
         # The id attribute respects this regex.

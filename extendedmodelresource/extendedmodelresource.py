@@ -4,46 +4,10 @@ from django.core.urlresolvers import get_script_prefix, resolve, Resolver404
 from django.conf.urls.defaults import patterns, url, include
 
 from tastypie import fields, http
-from tastypie.bundle import Bundle
 from tastypie.exceptions import NotFound, ImmediateHttpResponse
-from tastypie.resources import ModelResource, ModelDeclarativeMetaclass, \
-    ResourceOptions, convert_post_to_put
+from tastypie.resources import ResourceOptions, ModelDeclarativeMetaclass, \
+    ModelResource, convert_post_to_put
 from tastypie.utils import trailing_slash
-
-
-class ExtendedResourceOptions(ResourceOptions):
-    """
-    A configuration class for ``ExtendedModelResource``.
-
-    Adds the ability to use an attribute in the URLs of the resources different
-    than the primary key of the objects.
-
-    Useful for the case in which you want to hide the primary key of the
-    objects in the database. For example, you may want to use an UUID to
-    identify resources in a URL so the user cannot simply increment an integer
-    key and attempt to gain access to another object.
-
-    Any field you with to use as identifier for the objects in the URIs must
-    have unique=True constraint.
-
-    To use this you must declare an ``url_id_attribute`` in the resource with
-    the name of the attribute that will identify the objects in the URI.
-    If you have a 'uuid' attribute in the model, you then should declare
-
-        url_id_attribute = 'uuid'
-
-    in the corresponding resource.
-
-    If the ``url_id_attribute`` field is not found, the object's pkey will be
-    used as default.
-    """
-    def __new__(cls, meta=None):
-        new_class = super(ExtendedResourceOptions, cls).__new__(cls, meta)
-
-        new_class.url_id_attribute = getattr(new_class,
-                                             'url_id_attribute',
-                                             'pk')  # Defaults to pkey
-        return new_class
 
 
 class ExtendedDeclarativeMetaclass(ModelDeclarativeMetaclass):
@@ -58,7 +22,7 @@ class ExtendedDeclarativeMetaclass(ModelDeclarativeMetaclass):
                             name, bases, attrs)
 
         opts = getattr(new_class, 'Meta', None)
-        new_class._meta = ExtendedResourceOptions(opts)
+        new_class._meta = ResourceOptions(opts)
 
         # Will map nested fields names to the actual fields
         nested_fields = {}
@@ -83,7 +47,29 @@ class ExtendedModelResource(ModelResource):
 
     __metaclass__ = ExtendedDeclarativeMetaclass
 
-    def get_url_id_attribute_regex(self):
+    def remove_api_resource_names(self, url_dict):
+        """
+        Given a dictionary of regex matches from a URLconf, removes
+        ``api_name`` and/or ``resource_name`` if found.
+
+        This is useful for converting URLconf matches into something suitable
+        for data lookup. For example::
+
+            Model.objects.filter(**self.remove_api_resource_names(matches))
+        """
+        kwargs_subset = url_dict.copy()
+
+        for key in ['api_name', 'resource_name', 'related_manager',
+                    'child_object', 'parent_resource', 'nested_name',
+                    'parent_object']:
+            try:
+                del(kwargs_subset[key])
+            except KeyError:
+                pass
+
+        return kwargs_subset
+
+    def get_detail_uri_name_regex(self):
         """
         Return the regular expression to which the id attribute used in
         resource URLs should match.
@@ -96,7 +82,7 @@ class ExtendedModelResource(ModelResource):
     def base_urls(self):
         """
         Same as the original ``base_urls`` but supports using the custom
-        url_id_attribute instead of the pk of the objects.
+        regex for the ``detail_uri_name`` attribute of the objects.
         """
         # Due to the way Django parses URLs, ``get_multiple``
         # won't work without a trailing slash.
@@ -111,14 +97,14 @@ class ExtendedModelResource(ModelResource):
                     name="api_get_schema"),
             url(r"^(?P<resource_name>%s)/set/(?P<%s_list>(%s;?)*)/$" %
                     (self._meta.resource_name,
-                     self._meta.url_id_attribute,
-                     self.get_url_id_attribute_regex()),
+                     self._meta.detail_uri_name,
+                     self.get_detail_uri_name_regex()),
                     self.wrap_view('get_multiple'),
                     name="api_get_multiple"),
             url(r"^(?P<resource_name>%s)/(?P<%s>%s)%s$" %
                     (self._meta.resource_name,
-                     self._meta.url_id_attribute,
-                     self.get_url_id_attribute_regex(),
+                     self._meta.detail_uri_name,
+                     self.get_detail_uri_name_regex(),
                      trailing_slash()),
                      self.wrap_view('dispatch_detail'),
                      name="api_dispatch_detail"),
@@ -134,8 +120,8 @@ class ExtendedModelResource(ModelResource):
             return url(r"^(?P<resource_name>%s)/(?P<%s>%s)/"
                         r"(?P<nested_name>%s)%s$" %
                        (self._meta.resource_name,
-                        self._meta.url_id_attribute,
-                        self.get_url_id_attribute_regex(),
+                        self._meta.detail_uri_name,
+                        self.get_detail_uri_name_regex(),
                         nested_name,
                         trailing_slash()),
                        self.wrap_view('dispatch_nested'),
@@ -174,8 +160,8 @@ class ExtendedModelResource(ModelResource):
         if self.detail_actions():
             detail_url = "^(?P<resource_name>%s)/(?P<%s>%s)/" % (
                             self._meta.resource_name,
-                            self._meta.url_id_attribute,
-                            self.get_url_id_attribute_regex()
+                            self._meta.detail_uri_name,
+                            self.get_detail_uri_name_regex()
             )
             return patterns('', (detail_url, include(self.detail_actions())))
 
@@ -191,61 +177,6 @@ class ExtendedModelResource(ModelResource):
         """
         urls = self.override_urls() + self.base_urls() + self.nested_urls()
         return patterns('', *urls) + self.detail_actions_urlpatterns()
-
-    def get_multiple(self, request, **kwargs):
-        """
-        Same as the original ``get_multiple`` but supports using the custom
-        ``url_id_attribute`` instead of the pk of the objects.
-        """
-        self.method_check(request, allowed=['get'])
-        self.is_authenticated(request)
-        self.throttle_check(request)
-
-        # Rip apart the list then iterate.
-        list_name = '%s_list' % self._meta.url_id_attribute
-        obj_attributes = kwargs.get(list_name, '').split(';')
-        objects = []
-        not_found = []
-
-        for att_value in obj_attributes:
-            try:
-                # Get the object by our attribute
-                obj = self.obj_get(request,
-                                   **{self._meta.url_id_attribute: att_value})
-                bundle = self.build_bundle(obj=obj, request=request)
-                bundle = self.full_dehydrate(bundle)
-                objects.append(bundle)
-            except ObjectDoesNotExist:
-                not_found.append(att_value)
-
-        object_list = {'objects': objects}
-
-        if len(not_found):
-            object_list['not_found'] = not_found
-
-        self.log_throttled_access(request)
-        return self.create_response(request, object_list)
-
-    def get_resource_uri(self, bundle_or_obj):
-        """
-        Same as the original ``get_resource_uri`` but supports using the custom
-        ``url_id_attribute`` instead of the pk of the objects.
-        """
-        kwargs = {'resource_name': self._meta.resource_name}
-
-        # If url_id_attribute was not declared it has already been set to 'pk'
-        # by the metaclass.
-        id_attr_name = self._meta.url_id_attribute
-
-        if isinstance(bundle_or_obj, Bundle):
-            kwargs[id_attr_name] = getattr(bundle_or_obj.obj, id_attr_name)
-        else:
-            kwargs[id_attr_name] = getattr(bundle_or_obj, id_attr_name)
-
-        if self._meta.api_name is not None:
-            kwargs['api_name'] = self._meta.api_name
-
-        return self._build_reverse_url("api_dispatch_detail", kwargs=kwargs)
 
     def is_authorized_over_parent(self, request, parent_object):
         """
@@ -269,23 +200,17 @@ class ExtendedModelResource(ModelResource):
         Will check authorization to see if the request is allowed to act on
         the parent resource.
         """
-        try:
-            parent_object = self.get_object_list(request).get(**kwargs)
+        parent_object = self.get_object_list(request).get(**kwargs)
 
-            # If I am not authorized for the parent
-            if not self.is_authorized_over_parent(request, parent_object):
-                stringified_kwargs = ', '.join(["%s=%s" % (k, v)
-                                                for k, v in kwargs.items()])
-                raise self._meta.object_class.DoesNotExist("Couldn't find an "
-                        "instance of '%s' which matched '%s'." %
-                        (self._meta.object_class.__name__, stringified_kwargs))
+        # If I am not authorized for the parent
+        if not self.is_authorized_over_parent(request, parent_object):
+            stringified_kwargs = ', '.join(["%s=%s" % (k, v)
+                                            for k, v in kwargs.items()])
+            raise self._meta.object_class.DoesNotExist("Couldn't find an "
+                    "instance of '%s' which matched '%s'." %
+                    (self._meta.object_class.__name__, stringified_kwargs))
 
-            return parent_object
-        except ObjectDoesNotExist:
-            return http.HttpNotFound()
-        except MultipleObjectsReturned:
-            return http.HttpMultipleChoices("More than one parent resource is "
-                                            "found at this URI.")
+        return parent_object
 
     def parent_cached_obj_get(self, request=None, **kwargs):
         """
@@ -456,11 +381,8 @@ class ExtendedModelResource(ModelResource):
             return http.HttpMultipleChoices("More than one parent resource is "
                                             "found at this URI.")
 
-        kwargs.pop(self._meta.url_id_attribute)
-
         # TODO: comment further to make sense of this block
         manager = None
-
         if isinstance(nested_field.attribute, basestring):
             name = nested_field.attribute
             manager = getattr(obj, name, None)
@@ -481,17 +403,20 @@ class ExtendedModelResource(ModelResource):
         nested_resource = nested_field.to_class()
         nested_resource._meta.api_name = self._meta.api_name
 
-        dispatch_type = 'list'
+        kwargs['nested_name'] = nested_name
+        kwargs['parent_resource'] = self
+        kwargs['parent_object'] = obj
+
         if manager is None or not hasattr(manager, 'all'):
             dispatch_type = 'detail'
+            kwargs['child_object'] = manager
+        else:
+            dispatch_type = 'list'
+            kwargs['related_manager'] = manager
 
         return nested_resource.dispatch(
             dispatch_type,
             request,
-            nested_name=nested_name,
-            parent_resource=self,
-            parent_object=obj,
-            related_manager=manager,
             **kwargs
         )
 
@@ -615,11 +540,13 @@ class ExtendedModelResource(ModelResource):
         sorted_objects = self.apply_sorting(objects, options=request.GET)
 
         paginator = self._meta.paginator_class(
-            request.GET,
-            sorted_objects,
-            resource_uri=self.get_resource_list_uri(),
-            limit=self._meta.limit
-        )
+                        request.GET, sorted_objects,
+                        resource_uri=self.get_resource_uri(),
+                        limit=self._meta.limit,
+                        max_limit=self._meta.max_limit,
+                        collection_name=self._meta.collection_name
+                    )
+
         to_be_serialized = paginator.page()
 
         # Dehydrate the bundles in preparation for serialization.
@@ -646,13 +573,10 @@ class ExtendedModelResource(ModelResource):
         Should return a HttpResponse (200 OK).
         """
         try:
-            # If call was made through Nested, remove parameters
-            if 'related_manager' in kwargs:
-                kwargs.pop('related_manager', None)
-                kwargs.pop('parent_resource', None)
-                nested_name = kwargs.pop('nested_name', None)
-                parent_object = kwargs.pop('parent_object', None)
-                obj = getattr(parent_object, nested_name)
+            # If call was made through Nested we should already have the
+            # child object.
+            if 'child_object' in kwargs:
+                obj = kwargs.pop('child_object', None)
                 if obj is None:
                     return http.HttpNotFound()
             else:
@@ -670,3 +594,4 @@ class ExtendedModelResource(ModelResource):
         bundle = self.full_dehydrate(bundle)
         bundle = self.alter_detail_data_to_serialize(request, bundle)
         return self.create_response(request, bundle)
+

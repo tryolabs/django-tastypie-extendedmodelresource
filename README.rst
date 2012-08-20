@@ -5,7 +5,7 @@
 The ``ExtendedModelResource`` is an extension for TastyPie's ``ModelResource`` that adds some interesting features:
 
 * Supports easily using resources as *nested* of another resource, with proper authorization checks for each case.
-* Supports using a custom identifier attribute for resources in uris (not only the object's pk!)
+* [This feature has already been included in the official TastyPie] Supports using a custom identifier attribute for resources in uris (not only the object's pk!)
 
 
 Requirements
@@ -13,11 +13,11 @@ Requirements
 
 Required
 --------
-* django-tastypie 0.9.11 and its requirements.
+* Latest django-tastypie from repository (0.9.12-alpha or hopefully greater) and its requirements.
 
 Optional
 --------
-* Django 1.4 for the sample project.
+* Django 1.4.1 for the sample project.
 
 
 Installation
@@ -154,51 +154,24 @@ Caveats
 Changing object's identifier attribute in urls
 ==============================================
 
-With TastyPie's ``ModelResource`` you can override a method to change the identifier attribute used for objects in the URLs (see `Using Non-PK Data For Your URLs <http://django-tastypie.readthedocs.org/en/latest/cookbook.html#using-non-pk-data-for-your-urls>`_) ::
-
-    class UserResource(ModelResource):
-        class Meta:
-            queryset = User.objects.all()
-
-        def override_urls(self):
-            return [
-                url(r"^(?P<resource_name>%s)/(?P<username>[\w\d_.-]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            ]
-
-This adds a new URL using ``username`` and ignores the old URL using ``pk`` ::
-
-    ^api/ ^(?P<resource_name>user)/(?P<username>[\w\d_.-]+)/$ [name='api_dispatch_detail']
-    ^api/ ^(?P<resource_name>user)/$ [name='api_dispatch_list']
-    ^api/ ^(?P<resource_name>user)/schema/$ [name='api_get_schema']
-    ^api/ ^(?P<resource_name>user)/set/(?P<pk_list>\w[\w/;-]*)/$ [name='api_get_multiple']
-    ^api/ ^(?P<resource_name>user)/(?P<pk>\w[\w/-]*)/$ [name='api_dispatch_detail']
-
-But the old URL is still there, and this can be a bit confusing when you have an error with the URLs.
-
-Using ``ExtendedModelResource`` it is as easy as adding a new entry in the ``Meta`` class ::
+Using the latest TastyPie you can define a ``detail_uri_name`` attribute
+in the ``Meta`` class, to use a different attribute than the object's ``pk`` ::
 
     class UserResource(ExtendedModelResource):
         class Meta:
             queryset = User.objects.all()
-            url_id_attribute = 'username'
+            detail_uri_name = 'username'
 
-And you will get this list of urls ::
+With ``ExtendedModelResource`` you can change the regular expression used for your identifier attribute in the urls, you can override the method ``get_url_id_attribute_regex`` and return it, like the following example ::
 
-    ^api/ ^(?P<resource_name>user)/$ [name='api_dispatch_list']
-    ^api/ ^(?P<resource_name>user)/schema/$ [name='api_get_schema']
-    ^api/ ^(?P<resource_name>user)/set/(?P<username_list>(\w[\w-]*;?)*)/$ [name='api_get_multiple']
-    ^api/ ^(?P<resource_name>user)/(?P<username>\w[\w-]*)/$ [name='api_dispatch_detail']
-
-If you need to change the regular expression used for your identifier attribute in the urls, you can override the method ``get_url_id_attribute_regex`` and return it, like the following example ::
-
-    def get_url_id_attribute_regex(self):
+    def get_detail_uri_name_regex(self):
         return r'[aA-zZ][\w-]*'
 
 More information
 ================
 
-:Date: 04-19-2012
-:Version: 0.1
+:Date: 08-20-2012
+:Version: 0.2
 :Authors:
   - Alan Descoins - Tryolabs <alan@tryolabs.com>
   - Martín Santos - Tryolabs <santos@tryolabs.com>
