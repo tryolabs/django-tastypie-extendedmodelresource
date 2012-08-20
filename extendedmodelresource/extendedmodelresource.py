@@ -417,7 +417,6 @@ class ExtendedModelResource(ModelResource):
             dispatch_type = 'list'
             kwargs['related_manager'] = manager
 
-        import ipdb; ipdb.set_trace()
         return nested_resource.dispatch(
             dispatch_type,
             request,
