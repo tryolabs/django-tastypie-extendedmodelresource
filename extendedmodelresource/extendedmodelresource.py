@@ -381,27 +381,30 @@ class ExtendedModelResource(ModelResource):
             return http.HttpMultipleChoices("More than one parent resource is "
                                             "found at this URI.")
 
-        # TODO: comment further to make sense of this block
-        manager = None
-        if isinstance(nested_field.attribute, basestring):
-            name = nested_field.attribute
-            manager = getattr(obj, name, None)
-        elif callable(nested_field.attribute):
-            manager = nested_field.attribute(obj)
-        else:
-            raise fields.ApiFieldError(
-                "The model '%r' has an empty attribute '%s' \
-                and doesn't allow a null value." % (
-                    obj,
-                    nested_field.attribute
-                )
-            )
-
         # The nested resource needs to get the api_name from its parent because
         # it is possible that the resource being used as nested is not
         # registered in the API (ie. it can only be used as nested)
         nested_resource = nested_field.to_class()
         nested_resource._meta.api_name = self._meta.api_name
+
+        # TODO: comment further to make sense of this block
+        manager = None
+        try:
+            if isinstance(nested_field.attribute, basestring):
+                name = nested_field.attribute
+                manager = getattr(obj, name, None)
+            elif callable(nested_field.attribute):
+                manager = nested_field.attribute(obj)
+            else:
+                raise fields.ApiFieldError(
+                    "The model '%r' has an empty attribute '%s' \
+                    and doesn't allow a null value." % (
+                        obj,
+                        nested_field.attribute
+                    )
+                )
+        except ObjectDoesNotExist:
+            pass
 
         kwargs['nested_name'] = nested_name
         kwargs['parent_resource'] = self
@@ -414,6 +417,7 @@ class ExtendedModelResource(ModelResource):
             dispatch_type = 'list'
             kwargs['related_manager'] = manager
 
+        import ipdb; ipdb.set_trace()
         return nested_resource.dispatch(
             dispatch_type,
             request,
