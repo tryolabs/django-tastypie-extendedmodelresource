@@ -149,6 +149,7 @@ Caveats
 -------
 * ``ExtendedModelResource`` only supports one level nesting.
 * Resources used as nested can also be registered in an **Api** instance, but need not to. That is, there can be resources used **only** as nested and not exposed otherwise in the urls.
+* The parent resource must be obviously an instance of ``ExtendedModelResource``, but so **must** the child resource, too.
 
 
 Changing object's identifier attribute in urls
