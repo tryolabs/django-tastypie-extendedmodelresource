@@ -172,7 +172,7 @@ More information
 ================
 
 :Date: 08-20-2012
-:Version: 0.2
+:Version: 0.22
 :Authors:
   - Alan Descoins - Tryolabs <alan@tryolabs.com>
   - Martín Santos - Tryolabs <santos@tryolabs.com>
