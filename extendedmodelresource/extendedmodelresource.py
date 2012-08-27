@@ -49,6 +49,12 @@ class ExtendedModelResource(ModelResource):
 
     def remove_api_resource_names(self, url_dict):
         """
+        Override this function, we are going to use some data for Nesteds.
+        """
+        return url_dict.copy()
+
+    def real_remove_api_resource_names(self, url_dict):
+        """
         Given a dictionary of regex matches from a URLconf, removes
         ``api_name`` and/or ``resource_name`` if found.
 
@@ -175,7 +181,7 @@ class ExtendedModelResource(ModelResource):
         Same as the original ``urls`` attribute but supports nested urls as
         well as detail actions urls.
         """
-        urls = self.override_urls() + self.base_urls() + self.nested_urls()
+        urls = self.prepend_urls() + self.base_urls() + self.nested_urls()
         return patterns('', *urls) + self.detail_actions_urlpatterns()
 
     def is_authorized_over_parent(self, request, parent_object):
@@ -200,6 +206,7 @@ class ExtendedModelResource(ModelResource):
         Will check authorization to see if the request is allowed to act on
         the parent resource.
         """
+        kwargs = self.real_remove_api_resource_names(kwargs)
         parent_object = self.get_object_list(request).get(**kwargs)
 
         # If I am not authorized for the parent
@@ -276,6 +283,31 @@ class ExtendedModelResource(ModelResource):
         return self.obj_get_no_auth_check(request=request,
                         **self.remove_api_resource_names(kwargs))
 
+    def obj_get_list(self, request=None, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_get_list``.
+
+        Takes an optional ``request`` object, whose ``GET`` dictionary can be
+        used to narrow the query.
+        """
+        filters = {}
+
+        if hasattr(request, 'GET'):
+            # Grab a mutable copy.
+            filters = request.GET.copy()
+
+        # Update with the provided kwargs.
+        filters.update(self.real_remove_api_resource_names(kwargs))
+        applicable_filters = self.build_filters(filters=filters)
+
+        try:
+            base_object_list = self.apply_filters(request, applicable_filters)
+            return self.apply_proper_authorization_limits(request,
+                                                base_object_list, **kwargs)
+        except ValueError:
+            raise BadRequest("Invalid resource lookup data provided "
+                             "(mismatched type).")
+
     def obj_get(self, request=None, **kwargs):
         """
         Same as the original ``obj_get`` but knows when it is being called to
@@ -284,21 +316,11 @@ class ExtendedModelResource(ModelResource):
         Performs authorization checks in every case.
         """
         try:
-            nested_name = kwargs.pop('nested_name', None)
-            parent_resource = kwargs.pop('parent_resource', None)
-            parent_object = kwargs.pop('parent_object', None)
+            base_object_list = self.get_object_list(request).filter(
+                                **self.real_remove_api_resource_names(kwargs))
 
-            base_object_list = self.get_object_list(request).filter(**kwargs)
-
-            if nested_name is not None:
-                # TODO: throw exception if parent_resource or parent_object are
-                #       None
-                object_list = self.apply_nested_authorization_limits(request,
-                                    nested_name, parent_resource,
-                                    parent_object, base_object_list)
-            else:
-                object_list = self.apply_authorization_limits(request,
-                                                              base_object_list)
+            object_list = self.apply_proper_authorization_limits(request,
+                                                base_object_list, **kwargs)
 
             stringified_kwargs = ', '.join(["%s=%s" % (k, v)
                                             for k, v in kwargs.items()])
@@ -316,6 +338,73 @@ class ExtendedModelResource(ModelResource):
         except ValueError:
             raise NotFound("Invalid resource lookup data provided (mismatched "
                            "type).")
+
+    def cached_obj_get(self, request=None, **kwargs):
+        """
+        A version of ``obj_get`` that uses the cache as a means to get
+        commonly-accessed data faster.
+        """
+        cache_key = self.generate_cache_key('detail',
+                                **self.real_remove_api_resource_names(kwargs))
+        bundle = self._meta.cache.get(cache_key)
+
+        if bundle is None:
+            bundle = self.obj_get(request=request, **kwargs)
+            self._meta.cache.set(cache_key, bundle)
+
+        return bundle
+
+    def obj_create(self, bundle, request=None, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_create``.
+        """
+        kwargs = self.real_remove_api_resource_names(kwargs)
+        return super(ExtendedModelResource, self).obj_create(bundle, request,
+                                                             **kwargs)
+
+    def obj_update(self, bundle, request=None, skip_errors=False, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_update``.
+        """
+        kwargs = self.real_remove_api_resource_names(kwargs)
+        return super(ExtendedModelResource, self).obj_update(bundle, request,
+                                            skip_errors=skip_errors, **kwargs)
+
+    def obj_delete_list(self, request=None, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_delete_list``.
+
+        Takes optional ``kwargs``, which can be used to narrow the query.
+        """
+        base_object_list = self.get_object_list(request).filter(
+                                **self.real_remove_api_resource_names(kwargs))
+        authed_object_list = self.apply_proper_authorization_limits(request,
+                                                    base_object_list, **kwargs)
+
+        if hasattr(authed_object_list, 'delete'):
+            # It's likely a ``QuerySet``. Call ``.delete()`` for efficiency.
+            authed_object_list.delete()
+        else:
+            for authed_obj in authed_object_list:
+                authed_obj.delete()
+
+    def obj_delete(self, request=None, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_delete``.
+
+        Takes optional ``kwargs``, which are used to narrow the query to find
+        the instance.
+        """
+        kwargs = self.real_remove_api_resource_names(kwargs)
+        obj = kwargs.pop('_obj', None)
+
+        if not hasattr(obj, 'delete'):
+            try:
+                obj = self.obj_get(request, **kwargs)
+            except ObjectDoesNotExist:
+                raise NotFound("A model instance matching the provided arguments could not be found.")
+
+        obj.delete()
 
     def obj_get_no_auth_check(self, request=None, **kwargs):
         """
@@ -345,9 +434,9 @@ class ExtendedModelResource(ModelResource):
             raise NotFound("Invalid resource lookup data provided (mismatched "
                            "type).")
 
-    def apply_nested_authorization_limits(self, request, nested_name,
-                                          parent_resource, parent_object,
-                                          object_list):
+    def apply_nested_authorization_limits(self, request, object_list,
+                                               parent_resource, parent_object,
+                                               nested_name):
         """
         Allows the ``Authorization`` class to further limit the object list.
         Also a hook to customize per ``Resource``.
@@ -358,6 +447,22 @@ class ExtendedModelResource(ModelResource):
             object_list = method(request, parent_object, object_list)
 
         return object_list
+
+    def apply_proper_authorization_limits(self, request, object_list,
+                                              **kwargs):
+        """
+        Decide which type of authorization to apply, if the resource is being
+        used as nested or not.
+        """
+        parent_resource = kwargs.get('parent_resource', None)
+        if parent_resource is None:  # No parent, used normally
+            return self.apply_authorization_limits(request, object_list)
+
+        # Used as nested!
+        return self.apply_nested_authorization_limits(request, object_list,
+                    parent_resource,
+                    kwargs.get('parent_object', None),
+                    kwargs.get('nested_name', None))
 
     def dispatch_nested(self, request, **kwargs):
         """
@@ -416,6 +521,12 @@ class ExtendedModelResource(ModelResource):
         else:
             dispatch_type = 'list'
             kwargs['related_manager'] = manager
+            # 'pk' will refer to the parent, so we remove it.
+            if 'pk' in kwargs:
+                del kwargs['pk']
+            # Update with the related manager's filters, which will link to
+            # the parent.
+            kwargs.update(manager.core_filters)
 
         return nested_resource.dispatch(
             dispatch_type,
@@ -424,7 +535,7 @@ class ExtendedModelResource(ModelResource):
         )
 
     def is_authorized_nested(self, request, nested_name,
-                             parent_resource, parent_object, object=None):
+                               parent_resource, parent_object, object=None):
         """
         Handles checking of permissions to see if the user has authorization
         to GET, POST, PUT, or DELETE this resource.  If ``object`` is provided,
@@ -460,15 +571,13 @@ class ExtendedModelResource(ModelResource):
         self.is_authenticated(request)
         self.throttle_check(request)
 
-        nested_name = kwargs.get('nested_name', None)
         parent_resource = kwargs.get('parent_resource', None)
-        parent_object = kwargs.get('parent_object', None)
-        if nested_name is None:
+        if parent_resource is None:
             self.is_authorized(request)
         else:
-            self.is_authorized_nested(request, nested_name,
+            self.is_authorized_nested(request, kwargs['nested_name'],
                                       parent_resource,
-                                      parent_object)
+                                      kwargs['parent_object'])
 
         # All clear. Process the request.
         request = convert_post_to_put(request)
@@ -484,87 +593,6 @@ class ExtendedModelResource(ModelResource):
             return http.HttpNoContent()
 
         return response
-
-    def obj_create(self, bundle, request=None, **kwargs):
-        related_manager = kwargs.pop('related_manager', None)
-        # Remove the other parameters used for the nested resources, if they
-        # are present.
-        kwargs.pop('nested_name', None)
-        kwargs.pop('parent_resource', None)
-        kwargs.pop('parent_object', None)
-
-        bundle.obj = self._meta.object_class()
-
-        for key, value in kwargs.items():
-            setattr(bundle.obj, key, value)
-
-        bundle = self.full_hydrate(bundle)
-
-        # Save FKs just in case.
-        self.save_related(bundle)
-
-        if related_manager is not None:
-            related_manager.add(bundle.obj)
-
-        # Save the main object.
-        bundle.obj.save()
-
-        # Now pick up the M2M bits.
-        m2m_bundle = self.hydrate_m2m(bundle)
-        self.save_m2m(m2m_bundle)
-        return bundle
-
-    def get_list(self, request, **kwargs):
-        """
-        Returns a serialized list of resources.
-
-        Calls ``obj_get_list`` to provide the data, then handles that result
-        set and serializes it.
-
-        Should return a HttpResponse (200 OK).
-        """
-        if 'related_manager' in kwargs:
-            manager = kwargs.pop('related_manager')
-            base_objects = manager.all()
-
-            nested_name = kwargs.pop('nested_name', None)
-            parent_resource = kwargs.pop('parent_resource', None)
-            parent_object = kwargs.pop('parent_object', None)
-
-            objects = self.apply_nested_authorization_limits(request,
-                            nested_name, parent_resource, parent_object,
-                            base_objects)
-        else:
-            objects = self.obj_get_list(
-                request=request,
-                **self.remove_api_resource_names(kwargs)
-            )
-
-        sorted_objects = self.apply_sorting(objects, options=request.GET)
-
-        paginator = self._meta.paginator_class(
-                        request.GET, sorted_objects,
-                        resource_uri=self.get_resource_uri(),
-                        limit=self._meta.limit,
-                        max_limit=self._meta.max_limit,
-                        collection_name=self._meta.collection_name
-                    )
-
-        to_be_serialized = paginator.page()
-
-        # Dehydrate the bundles in preparation for serialization.
-        bundles = []
-        for obj in to_be_serialized['objects']:
-            bundles.append(
-                self.full_dehydrate(
-                    self.build_bundle(obj=obj, request=request)
-                )
-            )
-
-        to_be_serialized['objects'] = bundles
-        to_be_serialized = self.alter_list_data_to_serialize(request,
-                                                             to_be_serialized)
-        return self.create_response(request, to_be_serialized)
 
     def get_detail(self, request, **kwargs):
         """
@@ -597,4 +625,34 @@ class ExtendedModelResource(ModelResource):
         bundle = self.full_dehydrate(bundle)
         bundle = self.alter_detail_data_to_serialize(request, bundle)
         return self.create_response(request, bundle)
+
+    def post_list(self, request, **kwargs):
+        """
+        Unsupported if used as nested. Otherwise, same as original.
+        """
+        if 'parent_resource' in kwargs:
+            raise NotImplementedError('You cannot post a list on a nested'
+                                      ' resource.')
+
+        # TODO: support this & link with the parent (consider core_filters of
+        #       the related manager to know which attribute to set.
+        return super(ExtendedModelResource, self).post_list(request, **kwargs)
+
+    def put_list(self, request, **kwargs):
+        """
+        Unsupported if used as nested. Otherwise, same as original.
+        """
+        if 'parent_resource' in kwargs:
+            raise NotImplementedError('You cannot put a list on a nested'
+                                      ' resource.')
+        return super(ExtendedModelResource, self).put_list(request, **kwargs)
+
+    def patch_list(self, request, **kwargs):
+        """
+        Unsupported if used as nested. Otherwise, same as original.
+        """
+        if 'parent_resource' in kwargs:
+            raise NotImplementedError('You cannot patch a list on a nested'
+                                      ' resource.')
+        return super(ExtendedModelResource, self).patch_list(request, **kwargs)
 
