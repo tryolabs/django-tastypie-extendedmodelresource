@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.urlresolvers import get_script_prefix, resolve, Resolver404
 from django.conf.urls.defaults import patterns, url, include
@@ -305,8 +305,8 @@ class ExtendedModelResource(ModelResource):
             return self.apply_proper_authorization_limits(request,
                                                 base_object_list, **kwargs)
         except ValueError:
-            raise BadRequest("Invalid resource lookup data provided "
-                             "(mismatched type).")
+            raise HttpResponseBadRequest("Invalid resource lookup data provided "
+                                         "(mismatched type).")
 
     def obj_get(self, request=None, **kwargs):
         """
