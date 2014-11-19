@@ -1,7 +1,10 @@
 from django.http import HttpResponse
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.urlresolvers import get_script_prefix, resolve, Resolver404
-from django.conf.urls.defaults import patterns, url, include
+try:
+    from django.conf.urls import patterns, url, include
+except ImportError:
+    from django.conf.urls.defaults import patterns, url, include
 
 from tastypie import fields, http
 from tastypie.exceptions import NotFound, ImmediateHttpResponse
