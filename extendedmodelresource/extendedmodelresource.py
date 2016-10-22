@@ -366,7 +366,6 @@ class ExtendedModelResource(ModelResource):
             return super(ExtendedModelResource, self).obj_create(bundle, request,
                                                              **kwargs)
         except TypeError,e:
-            print e #FIXME: We must detect if we should really do thing sthis way or not
             return super(ExtendedModelResource, self).obj_create(bundle,
                                                              **kwargs)
 
