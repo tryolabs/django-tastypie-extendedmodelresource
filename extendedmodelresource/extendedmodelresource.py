@@ -362,7 +362,12 @@ class ExtendedModelResource(ModelResource):
         A ORM-specific implementation of ``obj_create``.
         """
         kwargs = self.real_remove_api_resource_names(kwargs)
-        return super(ExtendedModelResource, self).obj_create(bundle, request,
+        try:
+            return super(ExtendedModelResource, self).obj_create(bundle, request,
+                                                             **kwargs)
+        except TypeError,e:
+            print e #FIXME: We must detect if we should really do thing sthis way or not
+            return super(ExtendedModelResource, self).obj_create(bundle,
                                                              **kwargs)
 
     def obj_update(self, bundle, request=None, skip_errors=False, **kwargs):
@@ -458,8 +463,12 @@ class ExtendedModelResource(ModelResource):
         used as nested or not.
         """
         parent_resource = kwargs.get('parent_resource', None)
-        if parent_resource is None:  # No parent, used normally
-            return self.apply_authorization_limits(request, object_list)
+        if parent_resource is None: # No parent, used normally []            
+            if hasattr(self,'apply_authorization_limits'):  #apply_authorization_limits has been deprecated in tastypie
+                return self.apply_authorization_limits(request, object_list)
+            else:
+                return object_list
+
 
         # Used as nested!
         return self.apply_nested_authorization_limits(request, object_list,
@@ -576,7 +585,10 @@ class ExtendedModelResource(ModelResource):
 
         parent_resource = kwargs.get('parent_resource', None)
         if parent_resource is None:
-            self.is_authorized(request)
+            if hasattr(self,'is_authorized'):
+                self.is_authorized(request)
+            else:
+                self._meta.authorization.is_authorized(request)
         else:
             self.is_authorized_nested(request, kwargs['nested_name'],
                                       parent_resource,
@@ -630,32 +642,20 @@ class ExtendedModelResource(ModelResource):
         return self.create_response(request, bundle)
 
     def post_list(self, request, **kwargs):
-        """
-        Unsupported if used as nested. Otherwise, same as original.
-        """
-        if 'parent_resource' in kwargs:
-            raise NotImplementedError('You cannot post a list on a nested'
-                                      ' resource.')
-
-        # TODO: support this & link with the parent (consider core_filters of
-        #       the related manager to know which attribute to set.
+        # We allow this to nested resources, though that will use their authenticators'
+        # instead of the parents'. We also pass along **kwargs which includes
+        # the parent_id.
         return super(ExtendedModelResource, self).post_list(request, **kwargs)
 
     def put_list(self, request, **kwargs):
-        """
-        Unsupported if used as nested. Otherwise, same as original.
-        """
-        if 'parent_resource' in kwargs:
-            raise NotImplementedError('You cannot put a list on a nested'
-                                      ' resource.')
+        # We allow this to nested resources, though that will use their authenticators'
+        # instead of the parents'. We also pass along **kwargs which includes
+        # the parent_id.
         return super(ExtendedModelResource, self).put_list(request, **kwargs)
 
     def patch_list(self, request, **kwargs):
-        """
-        Unsupported if used as nested. Otherwise, same as original.
-        """
-        if 'parent_resource' in kwargs:
-            raise NotImplementedError('You cannot patch a list on a nested'
-                                      ' resource.')
+        # We allow this to nested resources, though that will use their authenticators'
+        # instead of the parents'. We also pass along **kwargs which includes
+        # the parent_id.
         return super(ExtendedModelResource, self).patch_list(request, **kwargs)
 
