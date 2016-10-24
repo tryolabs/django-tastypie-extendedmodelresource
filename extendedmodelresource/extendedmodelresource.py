@@ -363,9 +363,10 @@ class ExtendedModelResource(ModelResource):
         """
         kwargs = self.real_remove_api_resource_names(kwargs)
         try:
+            # Old versions of tastypie passed request as a parameter. Newer ones do not.
             return super(ExtendedModelResource, self).obj_create(bundle, request,
                                                              **kwargs)
-        except TypeError,e:
+        except TypeError as e:            
             return super(ExtendedModelResource, self).obj_create(bundle,
                                                              **kwargs)
 
@@ -384,8 +385,11 @@ class ExtendedModelResource(ModelResource):
         Takes optional ``kwargs``, which can be used to narrow the query.
         """
         cleaned_kwargs = self.real_remove_api_resource_names(kwargs)
+        
+        # Do not pass bundle down to filter, as it will be interpreted as a field
         if 'bundle' in cleaned_kwargs:
             del cleaned_kwargs['bundle']
+        
         base_object_list = self.get_object_list(request).filter(**cleaned_kwargs)
         authed_object_list = self.apply_proper_authorization_limits(request,
                                                     base_object_list, **kwargs)
@@ -584,12 +588,18 @@ class ExtendedModelResource(ModelResource):
         self.is_authenticated(request)
         self.throttle_check(request)
 
-        parent_resource = kwargs.get('parent_resource', None)
+        parent_resource = kwargs.get('parent_resource', None)        
         if parent_resource is None:
+            # Different tastypie versions handle authorization in different ways.
+            # We try to find is_authorized. If it is not found, then method()
+            # is probably a wrapper method calling the authorization methods
+            # themselves.
             if hasattr(self,'is_authorized'):
                 self.is_authorized(request)
             else:
-                try:
+                # Try self._meta.authorization.is_authorized. A failure means
+                # method() is a wrapper method.
+                try: 
                     self._meta.authorization.is_authorized(request)
                 except:
                     pass
