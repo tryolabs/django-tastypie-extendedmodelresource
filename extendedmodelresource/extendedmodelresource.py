@@ -589,7 +589,10 @@ class ExtendedModelResource(ModelResource):
             if hasattr(self,'is_authorized'):
                 self.is_authorized(request)
             else:
-                self._meta.authorization.is_authorized(request)
+                try:
+                    self._meta.authorization.is_authorized(request)
+                except:
+                    pass
         else:
             self.is_authorized_nested(request, kwargs['nested_name'],
                                       parent_resource,
