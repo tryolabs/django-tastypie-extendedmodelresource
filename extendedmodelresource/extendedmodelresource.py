@@ -383,8 +383,10 @@ class ExtendedModelResource(ModelResource):
 
         Takes optional ``kwargs``, which can be used to narrow the query.
         """
-        base_object_list = self.get_object_list(request).filter(
-                                **self.real_remove_api_resource_names(kwargs))
+        cleaned_kwargs = self.real_remove_api_resource_names(kwargs)
+        if 'bundle' in cleaned_kwargs:
+            del cleaned_kwargs['bundle']
+        base_object_list = self.get_object_list(request).filter(**cleaned_kwargs)
         authed_object_list = self.apply_proper_authorization_limits(request,
                                                     base_object_list, **kwargs)
 
