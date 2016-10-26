@@ -286,118 +286,116 @@ class ExtendedModelResource(ModelResource):
         return self.obj_get_no_auth_check(request=request,
                         **self.remove_api_resource_names(kwargs))
 
-    def obj_get_list(self, request=None, **kwargs):
+    def obj_get_list(self, bundle=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_get_list``.
 
         Takes an optional ``request`` object, whose ``GET`` dictionary can be
         used to narrow the query.
         """
-        filters = {}
+        request = kwargs['request'] if 'request' in kwargs else None
+        if bundle:
+            # Newer tastypie code is straightforward, just call it
+            return super(ExtendedModelResource, self).obj_get_list(request=request, bundle=bundle)
+        else:
+            # we need special code for old tastypie versions
+            filters = {}
 
-        if hasattr(request, 'GET'):
-            # Grab a mutable copy.
-            filters = request.GET.copy()
+            if hasattr(request, 'GET'):
+                # Grab a mutable copy.
+                filters = request.GET.copy()
 
-        # Update with the provided kwargs.
-        filters.update(self.real_remove_api_resource_names(kwargs))
-        applicable_filters = self.build_filters(filters=filters)
+            # Update with the provided kwargs.
+            filters.update(self.real_remove_api_resource_names(kwargs))
+            applicable_filters = self.build_filters(filters=filters)
 
-        try:
-            base_object_list = self.apply_filters(request, applicable_filters)
-            return self.apply_proper_authorization_limits(request,
-                                                base_object_list, **kwargs)
-        except ValueError:
-            raise BadRequest("Invalid resource lookup data provided "
-                             "(mismatched type).")
+            try:
+                base_object_list = self.apply_filters(request, applicable_filters)
+                return self.apply_proper_authorization_limits(request,
+                                                    base_object_list, **kwargs)
+            except ValueError:
+                raise BadRequest("Invalid resource lookup data provided "
+                                 "(mismatched type).")
 
-    def obj_get(self, request=None, **kwargs):
+    def obj_get(self, bundle=None, **kwargs):
         """
         Same as the original ``obj_get`` but knows when it is being called to
         get an object from a nested resource uri.
-
         Performs authorization checks in every case.
         """
-        try:
-            base_object_list = self.get_object_list(request).filter(
-                                **self.real_remove_api_resource_names(kwargs))
+        request = (kwargs['request'] if 'request' in kwargs else None)
+        if bundle:
+            # Newer tastypie code is straightforward, just call it
+            return super(ExtendedModelResource, self).obj_get(bundle=bundle, **kwargs)
+        else:
+            # we need special code for old tastypie versions
+            try:
+                base_object_list = self.get_object_list(request).filter(
+                                    **self.real_remove_api_resource_names(kwargs))
 
-            object_list = self.apply_proper_authorization_limits(request,
-                                                base_object_list, **kwargs)
+                object_list = self.apply_proper_authorization_limits(request,
+                                                    base_object_list, **kwargs)
 
-            stringified_kwargs = ', '.join(["%s=%s" % (k, v)
-                                            for k, v in kwargs.items()])
+                stringified_kwargs = ', '.join(["%s=%s" % (k, v)
+                                                for k, v in kwargs.items()])
 
-            if len(object_list) <= 0:
-                raise self._meta.object_class.DoesNotExist("Couldn't find an "
-                            "instance of '%s' which matched '%s'." %
-                            (self._meta.object_class.__name__,
-                             stringified_kwargs))
-            elif len(object_list) > 1:
-                raise MultipleObjectsReturned("More than '%s' matched '%s'." %
-                        (self._meta.object_class.__name__, stringified_kwargs))
+                if len(object_list) <= 0:
+                    raise self._meta.object_class.DoesNotExist("Couldn't find an "
+                                "instance of '%s' which matched '%s'." %
+                                (self._meta.object_class.__name__,
+                                 stringified_kwargs))
+                elif len(object_list) > 1:
+                    raise MultipleObjectsReturned("More than '%s' matched '%s'." %
+                            (self._meta.object_class.__name__, stringified_kwargs))
 
-            return object_list[0]
-        except ValueError:
-            raise NotFound("Invalid resource lookup data provided (mismatched "
-                           "type).")
+                return object_list[0]
+            except ValueError:
+                raise NotFound("Invalid resource lookup data provided (mismatched "
+                               "type).")
 
-    def cached_obj_get(self, request=None, **kwargs):
+    def cached_obj_get(self, bundle=None, **kwargs):
+        request = (kwargs['request'] if 'request' in kwargs else None)
         """
         A version of ``obj_get`` that uses the cache as a means to get
         commonly-accessed data faster.
         """
         cache_key = self.generate_cache_key('detail',
                                 **self.real_remove_api_resource_names(kwargs))
-        bundle = self._meta.cache.get(cache_key)
 
-        if bundle is None:
-            bundle = self.obj_get(request=request, **kwargs)
-            self._meta.cache.set(cache_key, bundle)
+        cached_bundle = self._meta.cache.get(cache_key)
 
-        return bundle
+        if cached_bundle is None:
+            cached_bundle = self.obj_get(bundle=bundle, **kwargs)
+            self._meta.cache.set(cache_key, cached_bundle)
+
+        return cached_bundle
 
     def obj_create(self, bundle, request=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_create``.
         """
         kwargs = self.real_remove_api_resource_names(kwargs)
-        try:
-            return super(ExtendedModelResource, self).obj_create(bundle, request,
-                                                             **kwargs)
-        except TypeError,e:
-            return super(ExtendedModelResource, self).obj_create(bundle,
+        return super(ExtendedModelResource, self).obj_create(bundle, request=request,
                                                              **kwargs)
 
-    def obj_update(self, bundle, request=None, skip_errors=False, **kwargs):
+    def obj_update(self, bundle, skip_errors=False, **kwargs):
         """
         A ORM-specific implementation of ``obj_update``.
         """
         kwargs = self.real_remove_api_resource_names(kwargs)
-        return super(ExtendedModelResource, self).obj_update(bundle, request,
+        return super(ExtendedModelResource, self).obj_update(bundle,
                                             skip_errors=skip_errors, **kwargs)
 
-    def obj_delete_list(self, request=None, **kwargs):
+    def obj_delete_list(self, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete_list``.
 
         Takes optional ``kwargs``, which can be used to narrow the query.
         """
         cleaned_kwargs = self.real_remove_api_resource_names(kwargs)
-        if 'bundle' in cleaned_kwargs:
-            del cleaned_kwargs['bundle']
-        base_object_list = self.get_object_list(request).filter(**cleaned_kwargs)
-        authed_object_list = self.apply_proper_authorization_limits(request,
-                                                    base_object_list, **kwargs)
+        return super(ExtendedModelResource, self).obj_delete_list(**cleaned_kwargs)
 
-        if hasattr(authed_object_list, 'delete'):
-            # It's likely a ``QuerySet``. Call ``.delete()`` for efficiency.
-            authed_object_list.delete()
-        else:
-            for authed_obj in authed_object_list:
-                authed_obj.delete()
-
-    def obj_delete(self, request=None, **kwargs):
+    def obj_delete(self, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete``.
 
@@ -407,11 +405,7 @@ class ExtendedModelResource(ModelResource):
         kwargs = self.real_remove_api_resource_names(kwargs)
         obj = kwargs.pop('_obj', None)
 
-        if not hasattr(obj, 'delete'):
-            try:
-                obj = self.obj_get(request, **kwargs)
-            except ObjectDoesNotExist:
-                raise NotFound("A model instance matching the provided arguments could not be found.")
+        return super(ExtendedModelResource, self).obj_delete(**kwargs)
 
         obj.delete()
 
@@ -574,6 +568,10 @@ class ExtendedModelResource(ModelResource):
         """
         allowed_methods = getattr(self._meta,
                                   "%s_allowed_methods" % request_type, None)
+
+        if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
+            request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
+
         request_method = self.method_check(request, allowed=allowed_methods)
 
         method = getattr(self, "%s_%s" % (request_method, request_type), None)
@@ -630,8 +628,8 @@ class ExtendedModelResource(ModelResource):
                 if obj is None:
                     return http.HttpNotFound()
             else:
-                obj = self.cached_obj_get(request=request,
-                                    **self.remove_api_resource_names(kwargs))
+                basic_bundle = self.build_bundle(request=request)
+                obj = self.cached_obj_get(bundle=basic_bundle, **self.remove_api_resource_names(kwargs))
         except AttributeError:
             return http.HttpNotFound()
         except ObjectDoesNotExist:
