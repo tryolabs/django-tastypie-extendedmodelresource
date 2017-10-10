@@ -289,71 +289,10 @@ class ExtendedModelResource(ModelResource):
                         **self.remove_api_resource_names(kwargs))
 
     def obj_get_list(self, bundle=None, **kwargs):
-        """
-        A ORM-specific implementation of ``obj_get_list``.
-
-        Takes an optional ``request`` object, whose ``GET`` dictionary can be
-        used to narrow the query.
-        """
-        request = kwargs['request'] if 'request' in kwargs else None
-        if bundle:
-            # Newer tastypie code is straightforward, just call it
-            return super(ExtendedModelResource, self).obj_get_list(request=request, bundle=bundle)
-        else:
-            # we need special code for old tastypie versions
-            filters = {}
-
-            if hasattr(request, 'GET'):
-                # Grab a mutable copy.
-                filters = request.GET.copy()
-
-            # Update with the provided kwargs.
-            filters.update(self.real_remove_api_resource_names(kwargs))
-            applicable_filters = self.build_filters(filters=filters)
-
-            try:
-                base_object_list = self.apply_filters(request, applicable_filters)
-                return self.apply_proper_authorization_limits(request,
-                                                    base_object_list, **kwargs)
-            except ValueError:
-                raise BadRequest("Invalid resource lookup data provided "
-                                 "(mismatched type).")
+            return super(ExtendedModelResource, self).obj_get_list(bundle, **self.real_remove_api_resource_names(kwargs))
 
     def obj_get(self, bundle=None, **kwargs):
-        """
-        Same as the original ``obj_get`` but knows when it is being called to
-        get an object from a nested resource uri.
-        Performs authorization checks in every case.
-        """
-        request = (kwargs['request'] if 'request' in kwargs else None)
-        if bundle:
-            # Newer tastypie code is straightforward, just call it
-            return super(ExtendedModelResource, self).obj_get(bundle=bundle, **kwargs)
-        else:
-            # we need special code for old tastypie versions
-            try:
-                base_object_list = self.get_object_list(request).filter(
-                                    **self.real_remove_api_resource_names(kwargs))
-
-                object_list = self.apply_proper_authorization_limits(request,
-                                                    base_object_list, **kwargs)
-
-                stringified_kwargs = ', '.join(["%s=%s" % (k, v)
-                                                for k, v in kwargs.items()])
-
-                if len(object_list) <= 0:
-                    raise self._meta.object_class.DoesNotExist("Couldn't find an "
-                                "instance of '%s' which matched '%s'." %
-                                (self._meta.object_class.__name__,
-                                 stringified_kwargs))
-                elif len(object_list) > 1:
-                    raise MultipleObjectsReturned("More than '%s' matched '%s'." %
-                            (self._meta.object_class.__name__, stringified_kwargs))
-
-                return object_list[0]
-            except ValueError:
-                raise NotFound("Invalid resource lookup data provided (mismatched "
-                               "type).")
+            return super(ExtendedModelResource, self).obj_get(bundle, **self.real_remove_api_resource_names(kwargs))
 
     def cached_obj_get(self, bundle=None, **kwargs):
         request = (kwargs['request'] if 'request' in kwargs else None)
@@ -585,21 +524,7 @@ class ExtendedModelResource(ModelResource):
         self.throttle_check(request)
 
         parent_resource = kwargs.get('parent_resource', None)        
-        if parent_resource is None:
-            # Different tastypie versions handle authorization in different ways.
-            # We try to find is_authorized. If it is not found, then method()
-            # is probably a wrapper method calling the authorization methods
-            # themselves.
-            if hasattr(self,'is_authorized'):
-                self.is_authorized(request)
-            else:
-                # Try self._meta.authorization.is_authorized. A failure means
-                # method() is a wrapper method.
-                try: 
-                    self._meta.authorization.is_authorized(request)
-                except:
-                    pass
-        else:
+        if parent_resource is not None:
             self.is_authorized_nested(request, kwargs['nested_name'],
                                       parent_resource,
                                       kwargs['parent_object'])
