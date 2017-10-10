@@ -2,12 +2,14 @@ from django.http import HttpResponse
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.urlresolvers import get_script_prefix, resolve, Resolver404
 try:
-    from django.conf.urls import patterns, url, include
+    from django.conf.urls import *
+    def patterns(*args):
+        return list(args[1:])
 except ImportError:
     from django.conf.urls.defaults import patterns, url, include
 
 from tastypie import fields, http
-from tastypie.exceptions import NotFound, ImmediateHttpResponse
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, BadRequest
 from tastypie.resources import ResourceOptions, ModelDeclarativeMetaclass, \
     ModelResource, convert_post_to_put
 from tastypie.utils import trailing_slash
