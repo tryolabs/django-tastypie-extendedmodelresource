@@ -145,6 +145,8 @@ For our users and entries example, an ``Authorization`` can be something like::
             # are associated to parent_object.
             return object_list.all()
 
+This authorization syntax follows the convention used until Tastypie v0.9.12.
+
 Caveats
 -------
 * ``ExtendedModelResource`` only supports one level nesting.
@@ -176,6 +178,7 @@ More information
 :Authors:
   - Alan Descoins - Tryolabs <alan@tryolabs.com>
   - Martín Santos - Tryolabs <santos@tryolabs.com>
+  - João Ricardo Lourenço <jorl17.8@gmail.com>
 
 :Website:
   https://github.com/tryolabs/django-tastypie-extendedmodelresource
