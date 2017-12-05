@@ -336,7 +336,7 @@ class ExtendedModelResource(ModelResource):
         cleaned_kwargs = self.real_remove_api_resource_names(kwargs)
         return super(ExtendedModelResource, self).obj_delete_list(**cleaned_kwargs)
 
-    def obj_delete(self, **kwargs):
+    def obj_delete(self, *args, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete``.
 
@@ -346,9 +346,7 @@ class ExtendedModelResource(ModelResource):
         kwargs = self.real_remove_api_resource_names(kwargs)
         obj = kwargs.pop('_obj', None)
 
-        return super(ExtendedModelResource, self).obj_delete(**kwargs)
-
-        obj.delete()
+        return super(ExtendedModelResource, self).obj_delete(*args, **kwargs)
 
     def obj_get_no_auth_check(self, request=None, **kwargs):
         """
