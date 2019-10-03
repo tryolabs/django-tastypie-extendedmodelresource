@@ -1,2 +1,2 @@
-Django==1.4.1
+Django==1.11.23
 -e git+https://github.com/toastdriven/django-tastypie@c38a667d335d0fa75a2befb1818bb643f911d111#egg=django_tastypie-dev
